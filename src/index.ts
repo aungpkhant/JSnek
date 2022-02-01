@@ -153,7 +153,7 @@ function game() {
     let nextDirection = snake.direction;
     if (snake.directionQueue.length > 0) {
       const [first, ...rest] = snake.directionQueue;
-      nextDirection = first ?? snake.direction;
+      nextDirection = isOpposingDirections(first, snake.direction) ? snake.direction : first;
       nextDirectionQueue = rest;
     }
 
