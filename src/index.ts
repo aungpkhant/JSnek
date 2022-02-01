@@ -80,7 +80,16 @@ function game() {
   const initialState: GameState = {
     squares: initialiseBoard(),
     snake: {
-      positions: [[2, 2]],
+      // Head is to the right
+      positions: [
+        [3, 0],
+        [3, 1],
+        [3, 2],
+        [3, 3],
+        [3, 4],
+        [3, 5],
+        [3, 6],
+      ],
       direction: Direction.Right,
       directionQueue: [],
     },
@@ -140,9 +149,19 @@ function game() {
       newSnakePos.shift();
     }
 
+    let nextDirectionQueue = snake.directionQueue;
+    let nextDirection = snake.direction;
+    if (snake.directionQueue.length > 0) {
+      const [first, ...rest] = snake.directionQueue;
+      nextDirection = first ?? snake.direction;
+      nextDirectionQueue = rest;
+    }
+
     return {
       ...snake,
       positions: newSnakePos,
+      direction: nextDirection,
+      directionQueue: nextDirectionQueue,
     };
   };
 
