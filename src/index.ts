@@ -6,6 +6,8 @@ import { map, filter, scan } from 'rxjs/operators';
 type Key = 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'Space';
 type Event = 'keydown';
 
+const isDebugMode = window.location.search === '?debug';
+
 const CONSTANTS = {
   ROWS: 30,
   COLS: 30,
@@ -26,6 +28,7 @@ type Coordinate = [number, number];
 type Snake = {
   positions: Coordinate[];
   direction: Direction;
+  directionQueue: Direction[];
 };
 
 // Two types of game state transitions
@@ -79,6 +82,7 @@ function game() {
     snake: {
       positions: [[2, 2]],
       direction: Direction.Right,
+      directionQueue: [],
     },
     foodPosition: [1, 1],
     gameOver: false,
@@ -86,7 +90,23 @@ function game() {
 
   const turnDown = fromEvent<KeyboardEvent>(document, 'keydown').pipe(
     filter(event => event.code === 'ArrowDown'),
+    filter(event => !event.repeat),
     map(() => new Turn(Direction.Down)),
+  );
+  const turnUp = fromEvent<KeyboardEvent>(document, 'keydown').pipe(
+    filter(event => event.code === 'ArrowUp'),
+    filter(event => !event.repeat),
+    map(() => new Turn(Direction.Up)),
+  );
+  const turnLeft = fromEvent<KeyboardEvent>(document, 'keydown').pipe(
+    filter(event => event.code === 'ArrowLeft'),
+    filter(event => !event.repeat),
+    map(() => new Turn(Direction.Left)),
+  );
+  const turnRight = fromEvent<KeyboardEvent>(document, 'keydown').pipe(
+    filter(event => event.code === 'ArrowRight'),
+    filter(event => !event.repeat),
+    map(() => new Turn(Direction.Right)),
   );
 
   const gameTick = interval(CONSTANTS.TICK_INTERVAL).pipe(map(_ => new Tick()));
@@ -134,12 +154,39 @@ function game() {
     };
   };
 
+  const isOpposingDirections = (currentDirection: Direction, newDirection: Direction): boolean => {
+    if (currentDirection === Direction.Up) {
+      return newDirection === Direction.Down;
+    }
+    if (currentDirection === Direction.Down) {
+      return newDirection === Direction.Up;
+    }
+    if (currentDirection === Direction.Left) {
+      return newDirection === Direction.Right;
+    }
+    if (currentDirection === Direction.Right) {
+      return newDirection === Direction.Left;
+    }
+    throw new Error('Unhandled direction');
+  };
+
+  const onDirectionInput = (gameState: GameState, direction: keyof typeof Direction) => {
+    const { snake } = gameState;
+    return {
+      ...gameState,
+      snake: {
+        ...snake,
+        directionQueue: [...snake.directionQueue, direction],
+      },
+    };
+  };
+
   const reduceGameState = (gameState: GameState, e: Tick | Turn) => {
     if (e instanceof Tick) {
       return tick(gameState);
     }
     if (e instanceof Turn) {
-      return;
+      return onDirectionInput(gameState, e.direction);
     }
     throw new Error('Unhandled event');
   };
@@ -162,9 +209,17 @@ function game() {
     const [foodX, foodY] = foodPosition;
     let foodSquare = squares.get(stringifyPos(foodX, foodY));
     foodSquare.style.background = 'var(--cell-food)';
+
+    // Debug Direction Queue
+    if (isDebugMode) {
+      let debugText = document.getElementById('debug__text');
+      debugText.innerHTML = snake.directionQueue.join(', ');
+    }
   }
 
-  const subscription = merge(gameTick, turnDown).pipe(scan(reduceGameState, initialState)).subscribe(updateView);
+  const subscription = merge(gameTick, turnDown, turnUp, turnLeft, turnRight)
+    .pipe(scan(reduceGameState, initialState))
+    .subscribe(updateView);
 }
 
 game();
