@@ -13,11 +13,12 @@ const CONSTANTS = {
   SQUARE_LENGTH: 10,
 } as const;
 
+// TODO type Direction proper in function parameters?
 enum Direction {
-  Up = 'UP',
-  Down = 'DOWN',
-  Left = 'LEFT',
-  Right = 'RIGHT',
+  Up = 'Up',
+  Down = 'Down',
+  Left = 'Left',
+  Right = 'Right',
 }
 
 type Coordinate = [number, number];
@@ -43,7 +44,12 @@ type GameState = Readonly<{
   gameOver: boolean;
 }>;
 
-function stringifyPos(x: number, y: number) {
+function stringifyPos(x: number | [number, number], y?: number): string {
+  if (Array.isArray(x)) {
+    const [xPos, yPos] = x;
+    return `${xPos}_${yPos}`;
+  }
+
   return `${x}_${y}`;
 }
 
@@ -78,32 +84,65 @@ function game() {
     gameOver: false,
   };
 
+  const turnDown = fromEvent<KeyboardEvent>(document, 'keydown').pipe(
+    filter(event => event.code === 'ArrowDown'),
+    map(() => new Turn(Direction.Down)),
+  );
+
   const gameTick = interval(CONSTANTS.TICK_INTERVAL).pipe(map(_ => new Tick()));
 
-  const nextSnake = (snake: Snake, foodPosition: GameState['foodPosition']) => {
-    // Snake ate food
-    if () {
-      
+  const calcNextHeadPos = (currentHead: [number, number], direction: keyof typeof Direction): Coordinate => {
+    const [x, y] = currentHead;
+    if (direction === 'Up') {
+      return [x - 1, y];
+    }
+    if (direction === 'Down') {
+      return [x + 1, y];
+    }
+    if (direction === 'Left') {
+      return [x, y - 1];
+    }
+    if (direction === 'Right') {
+      return [x, y + 1];
+    }
+    throw new Error('Unhandled direction');
+  };
+
+  const moveSnake = (snake: Snake, foodPosition: GameState['foodPosition']): Snake => {
+    const foodPosStr = stringifyPos(foodPosition);
+    const newSnakePos = [...snake.positions];
+    const nextHead = calcNextHeadPos(newSnakePos[newSnakePos.length - 1], snake.direction);
+
+    newSnakePos.push(nextHead);
+
+    // Dont grow if food not in snake
+    if (!snake.positions.map(stringifyPos).some(pos => pos === foodPosStr)) {
+      newSnakePos.shift();
     }
 
-  }
+    return {
+      ...snake,
+      positions: newSnakePos,
+    };
+  };
 
   const tick = (gameState: GameState) => {
+    const { snake, foodPosition } = gameState;
     return {
       ...gameState,
+      snake: moveSnake(snake, foodPosition),
+    };
+  };
 
-    }
-  }
-
-  const reduceGameState = (gameState:GameState, e: Tick | Turn) => {
-    if (e instanceof Tick){
-      return 
+  const reduceGameState = (gameState: GameState, e: Tick | Turn) => {
+    if (e instanceof Tick) {
+      return tick(gameState);
     }
     if (e instanceof Turn) {
-      return
+      return;
     }
-    throw new Error("Unhandled event")
-  }
+    throw new Error('Unhandled event');
+  };
 
   function updateView(gameState: GameState) {
     const { squares, snake, foodPosition } = gameState;
@@ -125,10 +164,7 @@ function game() {
     foodSquare.style.background = 'var(--cell-food)';
   }
 
-  const subscription = merge(
-    gameTick
-  ).pipe(scan(reduceGameState, initialState))
-
+  const subscription = merge(gameTick, turnDown).pipe(scan(reduceGameState, initialState)).subscribe(updateView);
 }
 
 game();
