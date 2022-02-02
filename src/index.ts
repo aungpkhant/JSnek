@@ -67,7 +67,6 @@ function initialiseSquares() {
     for (let j = 0; j < CONSTANTS.COLS; j++) {
       let square = document.createElement('div');
       square.style.position = 'absolute';
-      square.style.border = '1px solid gray';
       square.style.width = `${CONSTANTS.SQUARE_LENGTH}px`;
       square.style.height = `${CONSTANTS.SQUARE_LENGTH}px`;
       square.style.left = `${j * CONSTANTS.SQUARE_LENGTH}px`;
@@ -286,6 +285,10 @@ function game() {
 
     if (gameState.gameOver) {
       subscription.unsubscribe();
+
+      let GameOverScreen = document.getElementById('game__gameOver');
+      GameOverScreen.style.display = 'flex';
+
       return;
     }
 
@@ -306,6 +309,9 @@ function game() {
       let foodSquare = squares.get(stringifyPos(foodX, foodY));
       foodSquare.style.background = 'var(--cell-food)';
     }
+
+    let gameScoreValue = document.getElementById('game__scoreValue');
+    gameScoreValue.innerText = snake.positions.length + '';
 
     // Debug Direction Queue
     if (isDebugMode) {

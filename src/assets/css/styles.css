@@ -67,6 +67,13 @@ main {
   align-items: center;
 }
 
+#game__gameOver > p {
+  color: red;
+  text-shadow: 1px 0px 1px #2e2e2e, 0px 1px 1px #3f3232, 2px 1px 1px #2e2e2e, 1px 2px 1px #3f3232, 3px 2px 1px #2e2e2e,
+    2px 3px 1px #3f3232, 4px 3px 1px #2e2e2e, 3px 4px 1px #3f3232, 5px 4px 1px #2e2e2e, 4px 5px 1px #3f3232,
+    6px 5px 1px #2e2e2e, 5px 6px 1px #3f3232, 7px 6px 1px #2e2e2e;
+}
+
 .game__restart {
   margin-top: 2rem;
 }
