@@ -1,11 +1,13 @@
 import './assets/css/styles.css';
 
-import { fromEvent, interval, merge } from 'rxjs';
+import { Subscription, fromEvent, interval, merge } from 'rxjs';
 import { map, filter, scan } from 'rxjs/operators';
+import * as _ from 'lodash';
 
-type Key = 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'Space';
+type Key = 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'ArrowDown';
 type Event = 'keydown';
 
+let subscription: Subscription | undefined = undefined;
 const isDebugMode = window.location.search === '?debug';
 
 const CONSTANTS = {
@@ -15,7 +17,8 @@ const CONSTANTS = {
   SQUARE_LENGTH: 10,
 } as const;
 
-// TODO type Direction proper in function parameters?
+const MAX_SNAKE_LENGTH = CONSTANTS.ROWS * CONSTANTS.COLS - 1;
+
 enum Direction {
   Up = 'Up',
   Down = 'Down',
@@ -40,7 +43,7 @@ class Turn {
 }
 
 type GameState = Readonly<{
-  // TODO type
+  board: Coordinate[];
   squares: Map<string, HTMLDivElement>;
   snake: Snake;
   foodPosition: Coordinate;
@@ -57,8 +60,8 @@ function stringifyPos(x: number | [number, number], y?: number): string {
 }
 
 // ! Impure function
-function initialiseBoard() {
-  let squareMap = new Map();
+function initialiseSquares() {
+  let squareMap = new Map<string, HTMLDivElement>();
   let canvas = document.getElementById('canvas');
   for (let i = 0; i < CONSTANTS.ROWS; i++) {
     for (let j = 0; j < CONSTANTS.COLS; j++) {
@@ -76,27 +79,52 @@ function initialiseBoard() {
   return squareMap;
 }
 
+function initialiseBoard() {
+  let board = [];
+  for (let i = 0; i < CONSTANTS.ROWS; i++) {
+    for (let j = 0; j < CONSTANTS.COLS; j++) {
+      board.push([i, j] as Coordinate);
+    }
+  }
+  return board;
+}
+
 function game() {
+  const initBoard = initialiseBoard();
+  const snakeInitPos = [
+    [3, 0],
+    [3, 1],
+    [3, 2],
+    [3, 3],
+    [3, 4],
+    [3, 5],
+    [3, 6],
+  ] as Coordinate[];
+
+  // TODO optimize by tracking a list of cells not taken by snake with board instead of computing everytime
+  const generateFoodPos = (board: Coordinate[], snakePositions: Coordinate[]) => {
+    let boardWithoutSnake = [...board];
+    snakePositions.forEach(snakeCell => {
+      boardWithoutSnake = boardWithoutSnake.filter(boardCell => !_.isEqual(boardCell, snakeCell));
+    });
+
+    return boardWithoutSnake[Math.floor(Math.random() * boardWithoutSnake.length)];
+  };
+
   const initialState: GameState = {
-    squares: initialiseBoard(),
+    board: initBoard,
+    squares: initialiseSquares(),
     snake: {
       // Head is to the right
-      positions: [
-        [3, 0],
-        [3, 1],
-        [3, 2],
-        [3, 3],
-        [3, 4],
-        [3, 5],
-        [3, 6],
-      ],
+      positions: snakeInitPos,
       direction: Direction.Right,
       directionQueue: [],
     },
-    foodPosition: [1, 1],
+    foodPosition: generateFoodPos(initBoard, snakeInitPos),
     gameOver: false,
   };
 
+  // TODO wrapper func DRY
   const turnDown = fromEvent<KeyboardEvent>(document, 'keydown').pipe(
     filter(event => event.code === 'ArrowDown'),
     filter(event => !event.repeat),
@@ -137,6 +165,48 @@ function game() {
     throw new Error('Unhandled direction');
   };
 
+  const handleCollisions = (gameState: GameState) => {
+    const { board, snake, foodPosition } = gameState;
+
+    const [foodPosX, foodPosY] = foodPosition;
+
+    // * Note that we only need to check if head hits some object since by the mechanics
+    // * of the snake game, only the head can truly hit another object
+    // * We save alot of computation by not checking all the snake cells
+
+    const snakeHead = snake.positions[snake.positions.length - 1];
+    const [headPosX, headPosY] = snakeHead;
+
+    // Checks if head hits wall
+    const snakeCollideWithWalls = () => {
+      return headPosX < 0 || headPosY < 0 || headPosX >= CONSTANTS.ROWS || headPosY >= CONSTANTS.COLS;
+    };
+
+    const snakeCollideWithItself = () => {
+      // Check if head position is found twice in snake
+      return snake.positions
+        .slice(0, snake.positions.length - 1)
+        .some(([snakeBodyCellX, snakeBodyCellY]) => snakeBodyCellX === headPosX && snakeBodyCellY === headPosY);
+    };
+
+    const snakeCollideWithApple = () => {
+      return headPosX === foodPosX && headPosY === foodPosY;
+    };
+
+    const snakeIsFull = snake.positions.length >= MAX_SNAKE_LENGTH;
+
+    // Checks if head hits itself
+    return {
+      ...gameState,
+      gameOver: snakeCollideWithWalls() || snakeCollideWithItself() || snakeIsFull,
+      foodPosition: snakeCollideWithApple()
+        ? snakeIsFull
+          ? null
+          : generateFoodPos(board, snake.positions)
+        : foodPosition,
+    };
+  };
+
   const moveSnake = (snake: Snake, foodPosition: GameState['foodPosition']): Snake => {
     const foodPosStr = stringifyPos(foodPosition);
     const newSnakePos = [...snake.positions];
@@ -145,7 +215,8 @@ function game() {
     newSnakePos.push(nextHead);
 
     // Dont grow if food not in snake
-    if (!snake.positions.map(stringifyPos).some(pos => pos === foodPosStr)) {
+    // ! Can this code be refactored to handleCollisions?
+    if (!(stringifyPos(nextHead) === foodPosStr)) {
       newSnakePos.shift();
     }
 
@@ -167,10 +238,10 @@ function game() {
 
   const tick = (gameState: GameState) => {
     const { snake, foodPosition } = gameState;
-    return {
+    return handleCollisions({
       ...gameState,
       snake: moveSnake(snake, foodPosition),
-    };
+    });
   };
 
   const isOpposingDirections = (currentDirection: Direction, newDirection: Direction): boolean => {
@@ -213,6 +284,11 @@ function game() {
   function updateView(gameState: GameState) {
     const { squares, snake, foodPosition } = gameState;
 
+    if (gameState.gameOver) {
+      subscription.unsubscribe();
+      return;
+    }
+
     // Reset cells to orginal color
     squares.forEach((square, pos) => {
       square.style.background = 'var(--cell-empty)';
@@ -225,9 +301,11 @@ function game() {
     });
 
     // Color food cells
-    const [foodX, foodY] = foodPosition;
-    let foodSquare = squares.get(stringifyPos(foodX, foodY));
-    foodSquare.style.background = 'var(--cell-food)';
+    if (foodPosition) {
+      const [foodX, foodY] = foodPosition;
+      let foodSquare = squares.get(stringifyPos(foodX, foodY));
+      foodSquare.style.background = 'var(--cell-food)';
+    }
 
     // Debug Direction Queue
     if (isDebugMode) {
@@ -236,7 +314,7 @@ function game() {
     }
   }
 
-  const subscription = merge(gameTick, turnDown, turnUp, turnLeft, turnRight)
+  subscription = merge(gameTick, turnDown, turnUp, turnLeft, turnRight)
     .pipe(scan(reduceGameState, initialState))
     .subscribe(updateView);
 }
