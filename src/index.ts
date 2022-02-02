@@ -2,37 +2,17 @@ import './assets/css/styles.css';
 
 import { Subscription, fromEvent, interval, merge } from 'rxjs';
 import { map, filter, scan } from 'rxjs/operators';
-import * as _ from 'lodash';
+import isEqual = require('lodash/isEqual');
+
+import { Coordinate, Snake } from './types';
+import { stringifyPos, initialiseSquares, initialiseBoard } from './utils';
+import { CONSTANTS, MAX_SNAKE_LENGTH, Direction } from './constants';
 
 type Key = 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'ArrowDown';
 type Event = 'keydown';
 
 let subscription: Subscription | undefined = undefined;
 const isDebugMode = window.location.search === '?debug';
-
-const CONSTANTS = {
-  ROWS: 30,
-  COLS: 30,
-  TICK_INTERVAL: 100,
-  SQUARE_LENGTH: 10,
-} as const;
-
-const MAX_SNAKE_LENGTH = CONSTANTS.ROWS * CONSTANTS.COLS - 1;
-
-enum Direction {
-  Up = 'Up',
-  Down = 'Down',
-  Left = 'Left',
-  Right = 'Right',
-}
-
-type Coordinate = [number, number];
-
-type Snake = {
-  positions: Coordinate[];
-  direction: Direction;
-  directionQueue: Direction[];
-};
 
 // Two types of game state transitions
 class Tick {
@@ -50,61 +30,27 @@ type GameState = Readonly<{
   gameOver: boolean;
 }>;
 
-function stringifyPos(x: number | [number, number], y?: number): string {
-  if (Array.isArray(x)) {
-    const [xPos, yPos] = x;
-    return `${xPos}_${yPos}`;
-  }
-
-  return `${x}_${y}`;
-}
-
-// ! Impure function
-function initialiseSquares() {
-  let squareMap = new Map<string, HTMLDivElement>();
-  let canvas = document.getElementById('canvas');
-  for (let i = 0; i < CONSTANTS.ROWS; i++) {
-    for (let j = 0; j < CONSTANTS.COLS; j++) {
-      let square = document.createElement('div');
-      square.style.position = 'absolute';
-      square.style.width = `${CONSTANTS.SQUARE_LENGTH}px`;
-      square.style.height = `${CONSTANTS.SQUARE_LENGTH}px`;
-      square.style.left = `${j * CONSTANTS.SQUARE_LENGTH}px`;
-      square.style.top = `${i * CONSTANTS.SQUARE_LENGTH}px`;
-      squareMap.set(stringifyPos(i, j), square);
-      canvas.append(square);
-    }
-  }
-  return squareMap;
-}
-
-function initialiseBoard() {
-  let board = [];
-  for (let i = 0; i < CONSTANTS.ROWS; i++) {
-    for (let j = 0; j < CONSTANTS.COLS; j++) {
-      board.push([i, j] as Coordinate);
-    }
-  }
-  return board;
+function keyObservable<TGameEvent>(event: Event, pressedKeyCode: Key, result: () => TGameEvent) {
+  return fromEvent<KeyboardEvent>(document, event).pipe(
+    filter(event => event.code === pressedKeyCode),
+    filter(event => !event.repeat),
+    map(result),
+  );
 }
 
 function game() {
   const initBoard = initialiseBoard();
   const snakeInitPos = [
-    [3, 0],
-    [3, 1],
-    [3, 2],
-    [3, 3],
-    [3, 4],
-    [3, 5],
-    [3, 6],
+    [15, 14],
+    [15, 15],
+    [15, 16],
   ] as Coordinate[];
 
   // TODO optimize by tracking a list of cells not taken by snake with board instead of computing everytime
   const generateFoodPos = (board: Coordinate[], snakePositions: Coordinate[]) => {
     let boardWithoutSnake = [...board];
     snakePositions.forEach(snakeCell => {
-      boardWithoutSnake = boardWithoutSnake.filter(boardCell => !_.isEqual(boardCell, snakeCell));
+      boardWithoutSnake = boardWithoutSnake.filter(boardCell => !isEqual(boardCell, snakeCell));
     });
 
     return boardWithoutSnake[Math.floor(Math.random() * boardWithoutSnake.length)];
@@ -123,27 +69,10 @@ function game() {
     gameOver: false,
   };
 
-  // TODO wrapper func DRY
-  const turnDown = fromEvent<KeyboardEvent>(document, 'keydown').pipe(
-    filter(event => event.code === 'ArrowDown'),
-    filter(event => !event.repeat),
-    map(() => new Turn(Direction.Down)),
-  );
-  const turnUp = fromEvent<KeyboardEvent>(document, 'keydown').pipe(
-    filter(event => event.code === 'ArrowUp'),
-    filter(event => !event.repeat),
-    map(() => new Turn(Direction.Up)),
-  );
-  const turnLeft = fromEvent<KeyboardEvent>(document, 'keydown').pipe(
-    filter(event => event.code === 'ArrowLeft'),
-    filter(event => !event.repeat),
-    map(() => new Turn(Direction.Left)),
-  );
-  const turnRight = fromEvent<KeyboardEvent>(document, 'keydown').pipe(
-    filter(event => event.code === 'ArrowRight'),
-    filter(event => !event.repeat),
-    map(() => new Turn(Direction.Right)),
-  );
+  const turnDown = keyObservable('keydown', 'ArrowDown', () => new Turn(Direction.Down));
+  const turnUp = keyObservable('keydown', 'ArrowUp', () => new Turn(Direction.Up));
+  const turnLeft = keyObservable('keydown', 'ArrowLeft', () => new Turn(Direction.Left));
+  const turnRight = keyObservable('keydown', 'ArrowRight', () => new Turn(Direction.Right));
 
   const gameTick = interval(CONSTANTS.TICK_INTERVAL).pipe(map(_ => new Tick()));
 
